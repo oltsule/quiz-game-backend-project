@@ -37,6 +37,7 @@ router.post("/register", async (req, res) =>{
 
 // POST /api/auth/login
 router.post("/login", async (req, res) =>{
+    console.log("Body content:", req.body); // LISÄÄ TÄMÄ
     const {email, password} = req.body;
     if(!email || !password) {
         return res.status(400).json({error: "email, password  are required"})
