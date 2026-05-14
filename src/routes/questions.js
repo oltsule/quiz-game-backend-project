@@ -5,7 +5,15 @@ const authenticate = require('../middleware/auth');
 const isOwner = require('../middleware/isOwner');
 const multer = require("multer");
 const path = require("path");
+const { NotFoundError, ValidationError } = require('../lib/errors');
+const {z} = require("zod");
 
+const QuestionInput = z.object({
+    question: z.string().min(1),
+    date:z.string().date(),
+    answer: z.string().min(1),
+    keywords: z.union([z.string(),z.array(z.string())]).optional()
+});
 
 const storage = multer.diskStorage({
     destination: path.join(__dirname,"..", "..", "public", "uploads"),
@@ -94,7 +102,7 @@ router.get("/:questionId", async (req, res) => {
     });
 
     if (!question){
-        return res.status(404).json({msg: "Question not found"});
+        throw new NotFoundError("Post not found");
 
     }
     res.json(formatQuestion(question));
@@ -102,10 +110,7 @@ router.get("/:questionId", async (req, res) => {
 
 // POST /api/questions
 router.post("/", upload.single("image"), async (req, res) => {
-    const {question, date, answer, keywords} = req.body;
-    if(!question || !answer || !date) {
-        return res.status(400).json({msg: "question, answer and date are required!"});
-    }
+    const {question, date, answer, keywords} = QuestionInput.parse(req.body);
 
     const keywordsArray = Array.isArray(keywords) ? keywords : [];
     const imageUrl = req.file ? `/uploads/${req.file.filename}`:null;
@@ -136,13 +141,13 @@ router.put("/:questionId", isOwner, upload.single("image"), async (req, res) => 
     const existingQuestion = await prisma.question.findUnique({where: {id:questionId}});
 
     if (!existingQuestion){
-        return res.status(404).json({msg: "Question not found"});
+        throw new NotFoundError("Post not found");
     }
 
-    const {question, date, answer, keywords} = req.body;
+    const {question, date, answer, keywords} = QuestionInput.parse(req.body);
 
     if( !question || !date || !answer) {
-        return res.status(400).json({msg: "Question, date and answer are required!"});
+        throw new ValidationError("Question, answer and date are required!");
     }
 
     const imageUrl = req.file ? `/uploads/${req.file.filename}`:null;
@@ -157,7 +162,7 @@ router.put("/:questionId", isOwner, upload.single("image"), async (req, res) => 
             connectOrCreate: keywordsArray.map((kw) => ({
             where: {name: kw},
             create: {name: kw},
-            })),
+            })), 
         },
         },
         include:{
@@ -178,7 +183,7 @@ router.delete("/:questionId", isOwner, async (req, res) => {
     });
 
     if (!question){
-        return res.status(404).json({message: "Question not found"});
+        throw new NotFoundError("Post not found");
     }
 
     await prisma.question.delete({where: {id: questionId}});
@@ -196,7 +201,7 @@ router.post("/:questionId/like", async (req, res) =>{
     const questionId = Number(req.params.questionId);
     const question = await prisma.question.findUnique({where: {id: questionId}});
     if(!question){
-        return res.status(404).json({message: "Question not found"});
+        throw new NotFoundError("Post not found");
     }
     const like = await prisma.like.upsert({
         where: {userId_questionId: {userId: req.user.userId, questionId}},
@@ -219,7 +224,7 @@ router.delete("/:questionId/like", async (req, res) =>{
     const questionId = Number(req.params.questionId);
     const question = await prisma.question.findUnique({where: {id: questionId}});
     if(!question){
-        return res.status(404).json({message: "Question not found"});
+        throw new NotFoundError("Post not found");
     }
 
     const like = await prisma.like.deleteMany({
@@ -241,7 +246,7 @@ router.post("/:questionId/play", async (req, res) => {
     const { answer } = req.body;
 
     if (!answer) {
-        return res.status(400).json({ msg: "Answer is required" });
+        throw new ValidationError("Answer is required!");
     }
 
     const question = await prisma.question.findUnique({
@@ -249,7 +254,7 @@ router.post("/:questionId/play", async (req, res) => {
     });
 
     if (!question) {
-        return res.status(404).json({ msg: "Question not found" });
+        throw new NotFoundError("Post not found");
     }
 
     const isCorrect = question.answer.toLowerCase().trim() === answer.toLowerCase().trim();
